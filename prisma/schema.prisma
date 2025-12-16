@@ -1,0 +1,464 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  CUSTOMER
+  PROVIDER
+  BOTH
+  ADMIN
+}
+
+enum ListingCategory {
+  ELECTRICIAN
+  PLUMBER
+  PAINTING
+  DRYWALL
+  HANDYMAN
+  CARPENTRY
+  FLOORING
+  MASONRY
+  HVAC
+  OTHER
+}
+
+enum PriceType {
+  FIXED
+  HOURLY
+  QUOTE
+}
+
+enum BookingType {
+  BOOKING
+  QUOTE
+}
+
+enum BookingStatus {
+  REQUESTED
+  ACCEPTED
+  DECLINED
+  NEEDS_PAYMENT
+  PAID
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+  DISPUTED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  REQUIRES_PAYMENT
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+enum VerificationStatus {
+  NOT_SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum JobRequestStatus {
+  OPEN
+  IN_DISCUSSION
+  ASSIGNED
+  CLOSED
+  FLAGGED
+}
+
+enum JobTimeframe {
+  ASAP
+  NEXT_7_DAYS
+  SPECIFIC_DATE
+}
+
+enum OfferStatus {
+  SENT
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  authProvider String   @default("clerk")
+  authUserId   String   @unique
+  email        String   @unique
+  phone        String?
+  fullName     String?
+  role         UserRole @default(CUSTOMER)
+  locale       String   @default("de-DE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  providerProfile ProviderProfile?
+  customerProfile CustomerProfile?
+
+  listings           ServiceListing[] @relation("ProviderListings")
+  bookingsAsCustomer Booking[]        @relation("CustomerBookings")
+  bookingsAsProvider Booking[]        @relation("ProviderBookings")
+
+  jobRequests JobRequest[]   @relation("CustomerJobRequests")
+  offers      RequestOffer[] @relation("ProviderOffers")
+
+  threadsAsCustomer MessageThread[] @relation("ThreadsCustomer")
+  threadsAsProvider MessageThread[] @relation("ThreadsProvider")
+
+  messagesSent Message[] @relation("MessagesSent")
+
+  adminReviewedVerifications VerificationRequest[] @relation("AdminReviewedVerifications")
+  disputesOpened             Dispute[]             @relation("DisputesOpened")
+  availabilityRules          AvailabilityRule[]    @relation("ProviderAvailabilityRules")
+  reviewsGiven               Review[]              @relation("ReviewsGiven")
+  reviewsReceived            Review[]              @relation("ReviewsReceived")
+  verificationRequests       VerificationRequest[] @relation("ProviderVerificationRequests")
+}
+
+model CustomerProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultCity       String?
+  defaultPostalCode String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ProviderProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName     String
+  companyName     String?
+  headline        String?
+  bio             String?
+  yearsExperience Int?
+  baseCity        String
+  basePostalCode  String
+  serviceRadiusKm Int     @default(25)
+
+  profilePhotoUrl    String?
+  websiteUrl         String?
+  vatId              String?
+  tradeLicenseDocUrl String?
+  insuranceDocUrl    String?
+  idDocUrl           String?
+
+  verificationStatus VerificationStatus @default(NOT_SUBMITTED)
+  verifiedAt         DateTime?
+  verificationNotes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ServiceListing {
+  id         String @id @default(cuid())
+  providerId String
+  provider   User   @relation("ProviderListings", fields: [providerId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String
+  category    ListingCategory
+  priceType   PriceType       @default(FIXED)
+  currency    String          @default("EUR")
+
+  fixedPriceCents Int?
+  hourlyRateCents Int?
+  minimumHours    Int?
+
+  city            String
+  postalCode      String
+  serviceRadiusKm Int    @default(25)
+
+  photoUrls String[]
+  active    Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@index([city, category])
+  @@index([providerId])
+}
+
+model AvailabilityRule {
+  id         String @id @default(cuid())
+  providerId String
+  provider   User   @relation("ProviderAvailabilityRules", fields: [providerId], references: [id], onDelete: Cascade)
+
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  timezone  String @default("Europe/Berlin")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerId, dayOfWeek, startTime, endTime])
+  @@index([providerId])
+}
+
+model JobRequest {
+  id     String           @id @default(cuid())
+  status JobRequestStatus @default(OPEN)
+
+  customerId String
+  customer   User   @relation("CustomerJobRequests", fields: [customerId], references: [id], onDelete: Cascade)
+
+  category    ListingCategory
+  title       String
+  description String
+
+  // Full address stored, but providers should only see PLZ/Ort until assigned.
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  postalCode   String
+  country      String  @default("DE")
+
+  timeframe   JobTimeframe @default(NEXT_7_DAYS)
+  desiredDate DateTime?
+
+  currency       String @default("EUR")
+  budgetMinCents Int?
+  budgetMaxCents Int?
+
+  photoUrls String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  threads  MessageThread[]
+  offers   RequestOffer[]
+  bookings Booking[]       @relation("JobRequestBookings")
+
+  @@index([status, city, category])
+  @@index([customerId, status])
+}
+
+model MessageThread {
+  id String @id @default(cuid())
+
+  bookingId String?  @unique
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  jobRequestId String?
+  jobRequest   JobRequest? @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   User   @relation("ThreadsCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+
+  providerId String
+  provider   User   @relation("ThreadsProvider", fields: [providerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  messages Message[]
+  offers   RequestOffer[]
+
+  @@unique([jobRequestId, providerId])
+  @@index([customerId])
+  @@index([providerId])
+}
+
+model Message {
+  id       String        @id @default(cuid())
+  threadId String
+  thread   MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+
+  body           String
+  attachmentUrls String[]
+  createdAt      DateTime  @default(now())
+  readAt         DateTime?
+
+  @@index([threadId, createdAt])
+}
+
+model RequestOffer {
+  id     String      @id @default(cuid())
+  status OfferStatus @default(SENT)
+
+  jobRequestId String
+  jobRequest   JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  providerId String
+  provider   User   @relation("ProviderOffers", fields: [providerId], references: [id], onDelete: Cascade)
+
+  threadId String
+  thread   MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  currency      String    @default("EUR")
+  amountCents   Int
+  message       String
+  earliestStart DateTime?
+
+  acceptedAt DateTime?
+
+  bookingId String?  @unique
+  booking   Booking? @relation("OfferBooking", fields: [bookingId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobRequestId, status])
+  @@index([providerId, status])
+}
+
+model Booking {
+  id     String        @id @default(cuid())
+  type   BookingType   @default(BOOKING)
+  status BookingStatus @default(REQUESTED)
+
+  listingId String?
+  listing   ServiceListing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  jobRequestId String?
+  jobRequest   JobRequest? @relation("JobRequestBookings", fields: [jobRequestId], references: [id], onDelete: SetNull)
+
+  customerId String
+  customer   User   @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Restrict)
+
+  providerId String
+  provider   User   @relation("ProviderBookings", fields: [providerId], references: [id], onDelete: Restrict)
+
+  requestedStart DateTime?
+  requestedEnd   DateTime?
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+
+  jobTitle       String
+  jobDescription String
+  jobPhotoUrls   String[]
+
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  postalCode   String
+  country      String  @default("DE")
+
+  currency         String    @default("EUR")
+  priceType        PriceType
+  estimateHours    Int?
+  unitPriceCents   Int?
+  fixedPriceCents  Int?
+  quotedPriceCents Int?
+
+  platformFeeCents    Int @default(0)
+  providerPayoutCents Int @default(0)
+
+  stripeCheckoutSessionId String?
+  stripePaymentIntentId   String?
+  paidAt                  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  thread  MessageThread?
+  payment PaymentTransaction?
+  review  Review?
+  dispute Dispute?
+
+  offer RequestOffer? @relation("OfferBooking")
+
+  @@index([customerId, status])
+  @@index([providerId, status])
+  @@index([listingId])
+  @@index([jobRequestId])
+}
+
+model PaymentTransaction {
+  id        String  @id @default(cuid())
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  amountCents         Int
+  platformFeeCents    Int
+  providerAmountCents Int
+  currency            String @default("EUR")
+
+  status                  PaymentStatus @default(REQUIRES_PAYMENT)
+  stripeCheckoutSessionId String?
+  stripePaymentIntentId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Review {
+  reviewerId String
+  reviewer   User   @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  revieweeId String
+  reviewee   User   @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Restrict)
+
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([revieweeId])
+}
+
+model VerificationRequest {
+  id         String @id @default(cuid())
+  providerId String
+  provider   User   @relation("ProviderVerificationRequests", fields: [providerId], references: [id], onDelete: Cascade)
+
+  status      VerificationStatus @default(PENDING)
+  submittedAt DateTime           @default(now())
+  reviewedAt  DateTime?
+  reviewerId  String?
+  reviewer    User?              @relation("AdminReviewedVerifications", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  idDocUrl           String?
+  tradeLicenseDocUrl String?
+  insuranceDocUrl    String?
+  notes              String?
+
+  @@index([status])
+  @@index([providerId])
+}
+
+model Dispute {
+  id        String  @id @default(cuid())
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  openedById String
+  openedBy   User   @relation("DisputesOpened", fields: [openedById], references: [id], onDelete: Restrict)
+
+  reason          String
+  status          DisputeStatus @default(OPEN)
+  resolutionNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
