@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Search, Briefcase, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -8,6 +9,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  completeCustomerOnboarding,
+  completeProviderOnboarding,
+} from "@/app/_actions/onboarding"
 
 type AccountType = "customer" | "provider" | null
 
@@ -15,6 +20,7 @@ interface FormErrors {
   displayName?: string
   category?: string
   city?: string
+  postalCode?: string
 }
 
 const categories = [
@@ -28,21 +34,23 @@ const categories = [
 ]
 
 const cities = [
-  { value: "berlin", label: "Berlin" },
-  { value: "hamburg", label: "Hamburg" },
-  { value: "muenchen", label: "München" },
-  { value: "koeln", label: "Köln" },
-  { value: "frankfurt", label: "Frankfurt" },
-  { value: "stuttgart", label: "Stuttgart" },
-  { value: "duesseldorf", label: "Düsseldorf" },
-  { value: "leipzig", label: "Leipzig" },
+  { value: "Berlin", label: "Berlin" },
+  { value: "Hamburg", label: "Hamburg" },
+  { value: "München", label: "München" },
+  { value: "Köln", label: "Köln" },
+  { value: "Frankfurt", label: "Frankfurt" },
+  { value: "Stuttgart", label: "Stuttgart" },
+  { value: "Düsseldorf", label: "Düsseldorf" },
+  { value: "Leipzig", label: "Leipzig" },
 ]
 
 export function OnboardingForm() {
+  const router = useRouter()
   const [accountType, setAccountType] = useState<AccountType>(null)
   const [displayName, setDisplayName] = useState("")
   const [category, setCategory] = useState("")
   const [city, setCity] = useState("")
+  const [postalCode, setPostalCode] = useState("")
   const [radius, setRadius] = useState([25])
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -64,6 +72,12 @@ export function OnboardingForm() {
       if (!city) {
         newErrors.city = "Bitte wähle eine Stadt"
       }
+
+      if (!postalCode.trim()) {
+        newErrors.postalCode = "Bitte gib deine Postleitzahl ein"
+      } else if (!/^\d{5}$/.test(postalCode.trim())) {
+        newErrors.postalCode = "Postleitzahl muss genau 5 Ziffern haben"
+      }
     }
 
     setErrors(newErrors)
@@ -76,10 +90,24 @@ export function OnboardingForm() {
     if (!validateForm()) return
 
     setIsSubmitting(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    setIsSubmitting(false)
-    // Navigate to next step (would use router.push in real app)
+
+    try {
+      if (accountType === "customer") {
+        await completeCustomerOnboarding()
+        router.push("/app")
+      } else if (accountType === "provider") {
+        await completeProviderOnboarding({
+          displayName,
+          baseCity: city,
+          basePostalCode: postalCode,
+          serviceRadiusKm: radius[0],
+        })
+        router.push("/provider")
+      }
+    } catch (error) {
+      console.error("Onboarding error:", error)
+      setIsSubmitting(false)
+    }
   }
 
   const handleAccountTypeSelect = (type: AccountType) => {
@@ -254,6 +282,28 @@ export function OnboardingForm() {
               </SelectContent>
             </Select>
             {errors.city && <p className="text-sm text-destructive">{errors.city}</p>}
+          </div>
+
+          {/* Postal Code */}
+          <div className="space-y-2">
+            <Label htmlFor="postalCode">Postleitzahl</Label>
+            <Input
+              id="postalCode"
+              type="text"
+              inputMode="numeric"
+              placeholder="z.B. 10115"
+              maxLength={5}
+              value={postalCode}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, "")
+                setPostalCode(value)
+                if (errors.postalCode) {
+                  setErrors((prev) => ({ ...prev, postalCode: undefined }))
+                }
+              }}
+              className={cn(errors.postalCode && "border-destructive focus-visible:ring-destructive/20")}
+            />
+            {errors.postalCode && <p className="text-sm text-destructive">{errors.postalCode}</p>}
           </div>
 
           {/* Service Radius Slider */}
