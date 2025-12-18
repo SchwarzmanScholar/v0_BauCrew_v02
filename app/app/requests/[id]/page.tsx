@@ -1,199 +1,234 @@
-"use client"
-
-import { useState, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { AppShell } from "@/components/baucrew/app-shell"
-import { StatusBadge } from "@/components/baucrew/status-badge"
-import { EmptyState } from "@/components/baucrew/empty-state"
-import { RequestDetailsCard } from "@/components/request-detail/request-details-card"
-import { ActivityTimeline } from "@/components/request-detail/activity-timeline"
-import { OfferListCard } from "@/components/request-detail/offer-list-card"
-import { AcceptOfferDialog } from "@/components/request-detail/accept-offer-dialog"
-import { InlineMessagePanel } from "@/components/request-detail/inline-message-panel"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Pencil, XCircle, Inbox, AlertTriangle } from "lucide-react"
+import { notFound } from "next/navigation";
+import { format } from "date-fns";
+import { de } from "date-fns/locale";
+import { MapPin, Calendar, Euro, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
-  mockJobRequestDetail,
-  mockJobRequestDetailClosed,
-  mockJobRequestDetailNoOffers,
-  mockActivityTimeline,
-  mockDetailOffers,
-  mockProviderMessages,
-} from "@/lib/mock-data"
-import type { Offer, Message } from "@/lib/types"
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { AppShell } from "@/components/baucrew/app-shell";
+import { getJobRequestForCustomer } from "@/app/_actions/job-requests";
+import { CustomerOffersList } from "@/components/request-detail/customer-offers-list";
+import { ListingCategoryLabels, JobTimeframeLabels } from "@/lib/validations/job-request";
+import { requireDbUser } from "@/lib/auth";
 
-export default function RequestDetailPage() {
-  const params = useParams()
-  const router = useRouter()
-  const requestId = params.id as string
+interface PageProps {
+  params: Promise<{
+    id: string;
+  }>;
+}
 
-  // Determine which mock data to show based on ID
-  const request =
-    requestId === "closed"
-      ? mockJobRequestDetailClosed
-      : requestId === "no-offers"
-        ? mockJobRequestDetailNoOffers
-        : mockJobRequestDetail
+export default async function CustomerRequestDetailPage({ params }: PageProps) {
+  const { id } = await params;
+  const user = await requireDbUser();
 
-  const offers = request.status === "closed" || requestId === "no-offers" ? [] : mockDetailOffers
-  const timeline = mockActivityTimeline
+  let jobRequest;
+  try {
+    jobRequest = await getJobRequestForCustomer(id);
+  } catch (error) {
+    notFound();
+  }
 
-  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(offers.length > 0 ? offers[0].id : null)
-  const [acceptDialogOpen, setAcceptDialogOpen] = useState(false)
-  const [offerToAccept, setOfferToAccept] = useState<Offer | null>(null)
-  const [isAccepting, setIsAccepting] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([])
+  const categoryLabel = ListingCategoryLabels[jobRequest.category] || jobRequest.category;
+  const timeframeLabel = JobTimeframeLabels[jobRequest.timeframe] || jobRequest.timeframe;
 
-  const selectedOffer = offers.find((o) => o.id === selectedOfferId) || null
-
-  // Load messages when selected offer changes
-  useEffect(() => {
-    if (selectedOffer) {
-      const providerMessages = mockProviderMessages[selectedOffer.providerId] || []
-      setMessages(providerMessages)
-    } else {
-      setMessages([])
+  // Get status badge color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "OPEN":
+        return "bg-green-100 text-green-800 border-green-200";
+      case "IN_DISCUSSION":
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case "ASSIGNED":
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      case "CLOSED":
+        return "bg-gray-100 text-gray-800 border-gray-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
-  }, [selectedOffer])
+  };
 
-  const handleSelectOffer = (offerId: string) => {
-    setSelectedOfferId(offerId)
-  }
-
-  const handleAcceptClick = (offer: Offer) => {
-    setOfferToAccept(offer)
-    setAcceptDialogOpen(true)
-  }
-
-  const handleConfirmAccept = () => {
-    setIsAccepting(true)
-    // Simulate API call
-    setTimeout(() => {
-      setIsAccepting(false)
-      setAcceptDialogOpen(false)
-      router.push("/app/bookings/payment")
-    }, 1500)
-  }
-
-  const handleSendMessage = (content: string) => {
-    const newMsg: Message = {
-      id: `new-msg-${Date.now()}`,
-      senderId: "current-user",
-      senderName: "Max Mustermann",
-      senderAvatar: "/placeholder.svg?height=40&width=40",
-      content,
-      timestamp: new Date(),
-      isCurrentUser: true,
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "OPEN":
+        return "Offen";
+      case "IN_DISCUSSION":
+        return "In Diskussion";
+      case "ASSIGNED":
+        return "Vergeben";
+      case "CLOSED":
+        return "Geschlossen";
+      case "FLAGGED":
+        return "Markiert";
+      default:
+        return status;
     }
-    setMessages((prev) => [...prev, newMsg])
-  }
-
-  const handleMessageClick = (offer: Offer) => {
-    setSelectedOfferId(offer.id)
-    // Scroll to message panel on mobile
-    const messageSection = document.getElementById("message-section")
-    if (messageSection && window.innerWidth < 1024) {
-      messageSection.scrollIntoView({ behavior: "smooth" })
-    }
-  }
-
-  const isClosed = request.status === "closed"
+  };
 
   return (
-    <AppShell userRole="customer">
-      <div className="container mx-auto px-4 py-6">
-        {/* Closed banner */}
-        {isClosed && (
-          <Alert className="mb-6 border-muted bg-muted/30">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Dieser Auftrag ist geschlossen. Du kannst keine neuen Angebote mehr erhalten.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold text-balance">{request.title}</h1>
-            <StatusBadge status={request.status} />
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={isClosed}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Bearbeiten
-            </Button>
-            <Button variant="destructive" size="sm" disabled={isClosed}>
-              <XCircle className="h-4 w-4 mr-2" />
-              Schließen
-            </Button>
-          </div>
+    <AppShell>
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
+        {/* Back button */}
+        <div className="mb-6">
+          <Button variant="ghost" asChild>
+            <Link href="/app/requests">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Zurück zu meinen Aufträgen
+            </Link>
+          </Button>
         </div>
 
-        {/* Two column layout */}
-        <div className="grid lg:grid-cols-[380px_1fr] gap-6">
-          {/* Left column - Request details & Activity */}
-          <div className="space-y-6">
-            <RequestDetailsCard request={request} />
-            <ActivityTimeline events={timeline} />
-          </div>
-
-          {/* Right column - Offers & Messages */}
-          <div className="space-y-6">
-            {/* Offers section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main content - Left side */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Job Request Details */}
             <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg">Angebote & Antworten ({offers.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {offers.length === 0 ? (
-                  <EmptyState
-                    icon={Inbox}
-                    title="Noch keine Antworten"
-                    description="Sobald Handwerker antworten, erscheinen sie hier. Du erhältst eine Benachrichtigung."
-                  />
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {offers.map((offer) => (
-                      <OfferListCard
-                        key={offer.id}
-                        offer={offer}
-                        isSelected={selectedOfferId === offer.id}
-                        onSelect={() => handleSelectOffer(offer.id)}
-                        onAccept={() => handleAcceptClick(offer)}
-                        onMessage={() => handleMessageClick(offer)}
-                      />
-                    ))}
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4 mb-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge variant="outline" className="font-medium">
+                      {categoryLabel}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={getStatusColor(jobRequest.status)}
+                    >
+                      {getStatusLabel(jobRequest.status)}
+                    </Badge>
                   </div>
+                  {jobRequest.offers.length > 0 && (
+                    <Badge variant="secondary">
+                      {jobRequest.offers.length}{" "}
+                      {jobRequest.offers.length === 1 ? "Angebot" : "Angebote"}
+                    </Badge>
+                  )}
+                </div>
+                <CardTitle className="text-2xl">{jobRequest.title}</CardTitle>
+                <CardDescription>
+                  Erstellt am{" "}
+                  {format(new Date(jobRequest.createdAt), "dd. MMMM yyyy", {
+                    locale: de,
+                  })}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Description */}
+                <div>
+                  <h3 className="font-semibold mb-2">Beschreibung</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {jobRequest.description}
+                  </p>
+                </div>
+
+                <Separator />
+
+                {/* Location */}
+                <div className="flex items-start gap-2">
+                  <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold mb-1">Standort</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {jobRequest.addressLine1}
+                    </p>
+                    {jobRequest.addressLine2 && (
+                      <p className="text-sm text-muted-foreground">
+                        {jobRequest.addressLine2}
+                      </p>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {jobRequest.postalCode} {jobRequest.city}
+                    </p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Timing */}
+                <div className="flex items-start gap-2">
+                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold mb-1">Zeitrahmen</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {timeframeLabel}
+                    </p>
+                    {jobRequest.desiredDate && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Gewünschter Termin:{" "}
+                        {format(new Date(jobRequest.desiredDate), "dd. MMMM yyyy", {
+                          locale: de,
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Budget */}
+                {(jobRequest.budgetMinCents || jobRequest.budgetMaxCents) && (
+                  <>
+                    <Separator />
+                    <div className="flex items-start gap-2">
+                      <Euro className="h-5 w-5 text-muted-foreground mt-0.5" />
+                      <div>
+                        <h3 className="font-semibold mb-1">Budget</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {jobRequest.budgetMinCents &&
+                            `${(jobRequest.budgetMinCents / 100).toFixed(2)} EUR`}
+                          {jobRequest.budgetMinCents &&
+                            jobRequest.budgetMaxCents &&
+                            " - "}
+                          {jobRequest.budgetMaxCents &&
+                            `${(jobRequest.budgetMaxCents / 100).toFixed(2)} EUR`}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Photos */}
+                {jobRequest.photoUrls && jobRequest.photoUrls.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold mb-3">Fotos</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {jobRequest.photoUrls.map((url, index) => (
+                          <div
+                            key={index}
+                            className="aspect-square rounded-lg overflow-hidden bg-muted"
+                          >
+                            <img
+                              src={url}
+                              alt={`Auftragsfoto ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
+          </div>
 
-            {/* Messages section */}
-            {offers.length > 0 && (
-              <div id="message-section">
-                <h2 className="text-lg font-semibold mb-4">Nachrichten</h2>
-                <InlineMessagePanel
-                  messages={messages}
-                  selectedOffer={selectedOffer}
-                  onSendMessage={handleSendMessage}
-                />
-              </div>
-            )}
+          {/* Right sidebar - Offers */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-6">
+              <CustomerOffersList
+                offers={jobRequest.offers}
+                jobRequestStatus={jobRequest.status}
+              />
+            </div>
           </div>
         </div>
-
-        {/* Accept offer dialog */}
-        <AcceptOfferDialog
-          open={acceptDialogOpen}
-          onOpenChange={setAcceptDialogOpen}
-          offer={offerToAccept}
-          onConfirm={handleConfirmAccept}
-          isLoading={isAccepting}
-        />
       </div>
     </AppShell>
-  )
+  );
 }

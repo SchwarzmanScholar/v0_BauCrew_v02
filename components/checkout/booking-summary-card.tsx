@@ -43,7 +43,7 @@ export function BookingSummaryCard({ listing, booking }: BookingSummaryCardProps
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold">{listing.providerName}</span>
-              {listing.verified && <VerificationBadge size="sm" />}
+              {listing.verified && <VerificationBadge />}
             </div>
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
               <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />

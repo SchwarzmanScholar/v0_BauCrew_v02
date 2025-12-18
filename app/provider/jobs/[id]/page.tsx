@@ -28,8 +28,12 @@ export default function ProviderJobDetailPage({
   const [job, setJob] = useState(initialJob)
   const [messages, setMessages] = useState<Message[]>(mockProviderMessages)
 
-  // Address is fully visible after the request is accepted (not in requested status)
-  const showFullAddress = job.status !== "requested"
+  // Address is fully visible only after payment is confirmed
+  // For mock data: show after "payment_pending" status becomes "scheduled" or later
+  // For real Prisma BookingStatus: show when PAID, SCHEDULED, IN_PROGRESS, or COMPLETED
+  // Hide address when: "requested", "payment_pending" (mock) OR REQUESTED, ACCEPTED, NEEDS_PAYMENT (Prisma)
+  const isPaid = job.status !== "requested" && job.status !== "payment_pending"
+  const showFullAddress = isPaid
 
   const handleAccept = () => {
     setJob((prev) => ({ ...prev, status: "payment_pending" as ProviderJobStatus }))

@@ -96,6 +96,8 @@ export interface Order {
   category: string
 }
 
+export type OrderStatus = Order["status"]
+
 export interface ProviderBookingRequest {
   id: string
   jobTitle: string
@@ -573,4 +575,5 @@ export interface Conversation {
   lastMessageAt: Date
   unreadCount: number
   messages: Message[]
+  link?: string // Optional navigation link (added dynamically in some views)
 }

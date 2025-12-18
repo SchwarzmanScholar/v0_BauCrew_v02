@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AppShell } from "@/components/baucrew/app-shell";
 import { requireDbUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { confirmSimulatedPayment } from "@/app/_actions/payments";
 import { SimulatedPaymentButton } from "@/components/checkout/simulated-payment-button";
 
 interface PageProps {
@@ -58,7 +59,7 @@ export default async function CheckoutPage({ params }: PageProps) {
   }
 
   // If already paid, redirect to booking detail
-  if (booking.status === "PAID" || booking.payment?.status === "SUCCEEDED") {
+  if (booking.status === "PAID") {
     redirect(`/app/bookings/${bookingId}`);
   }
 

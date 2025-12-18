@@ -1,147 +1,53 @@
-"use client"
+﻿import { requireDbUser } from "@/lib/auth"
+import { listCustomerBookings } from "@/app/_actions/bookings"
+import { OrdersClient } from "@/components/orders/orders-client"
+import type { BookingStatus } from "@prisma/client"
+import type { Order } from "@/lib/types"
 
-import { useState } from "react"
-import Link from "next/link"
-import { Search, FileText, ShoppingBag } from "lucide-react"
-import { AppShell } from "@/components/baucrew/app-shell"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { OrderCard } from "@/components/orders/order-card"
-import { mockOrders } from "@/lib/mock-data"
-import type { OrderStatus } from "@/lib/types"
+// Map Prisma BookingStatus to UI OrderStatus
+function mapBookingStatusToOrderStatus(
+  status: BookingStatus,
+): "requested" | "payment_pending" | "scheduled" | "in_progress" | "completed" {
+  switch (status) {
+    case "REQUESTED":
+    case "ACCEPTED":
+    case "DECLINED":
+      return "requested"
+    case "NEEDS_PAYMENT":
+    case "PAID":
+      return "payment_pending"
+    case "SCHEDULED":
+      return "scheduled"
+    case "IN_PROGRESS":
+      return "in_progress"
+    case "COMPLETED":
+    case "CANCELED":
+    case "DISPUTED":
+    case "REFUNDED":
+      return "completed"
+    default:
+      return "requested"
+  }
+}
 
-type TabValue = "all" | OrderStatus
+export default async function OrdersPage() {
+  const user = await requireDbUser()
+  const bookings = await listCustomerBookings()
 
-const tabConfig: { value: TabValue; label: string }[] = [
-  { value: "all", label: "Alle" },
-  { value: "requested", label: "Angefragt" },
-  { value: "payment_pending", label: "Zahlung offen" },
-  { value: "scheduled", label: "Geplant" },
-  { value: "in_progress", label: "In Arbeit" },
-  { value: "completed", label: "Abgeschlossen" },
-]
+  // Transform bookings to Order format
+  const orders: Order[] = bookings.map((booking) => ({
+    id: booking.id,
+    jobTitle: booking.jobTitle,
+    providerId: booking.provider.id,
+    providerName: booking.provider.providerProfile?.displayName || booking.provider.fullName || booking.provider.email,
+    providerAvatar: "",
+    customerId: user.id,
+    status: mapBookingStatusToOrderStatus(booking.status),
+    scheduledDate: new Date(), // TODO: Add scheduledDate to Booking model
+    scheduledTime: "TBD", // TODO: Add scheduledTime to Booking model
+    totalAmount: (booking.quotedPriceCents ?? 0) / 100,
+    category: `${booking.city}, ${booking.postalCode}`,
+  }))
 
-export default function OrdersPage() {
-  const [activeTab, setActiveTab] = useState<TabValue>("all")
-
-  // Filter orders by status
-  const filteredOrders = activeTab === "all" ? mockOrders : mockOrders.filter((order) => order.status === activeTab)
-
-  // Check if user has any orders (for empty state)
-  const hasAnyOrders = mockOrders.length > 0
-
-  // Toggle to simulate first-time user (for demo purposes)
-  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false)
-
-  const showFirstTimeEmpty = isFirstTimeUser || !hasAnyOrders
-
-  return (
-    <AppShell userRole="customer">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <h1 className="text-2xl font-bold">Meine Bestellungen</h1>
-        </div>
-
-        {/* Demo toggle */}
-        <div className="mb-4">
-          <Button variant="outline" size="sm" onClick={() => setIsFirstTimeUser(!isFirstTimeUser)}>
-            {isFirstTimeUser ? "Demo: Bestellungen anzeigen" : "Demo: Keine Bestellungen"}
-          </Button>
-        </div>
-
-        {showFirstTimeEmpty ? (
-          // First-time / empty state
-          <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-            <div className="rounded-full bg-muted p-6 mb-6">
-              <ShoppingBag className="h-14 w-14 text-muted-foreground" />
-            </div>
-            <h2 className="text-2xl font-semibold mb-3">Noch keine Bestellungen</h2>
-            <p className="text-muted-foreground mb-8 max-w-md">
-              Finde einen Handwerker oder stelle einen Auftrag ein, um loszulegen.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <Button asChild className="bg-secondary hover:bg-secondary/90">
-                <Link href="/app/suche">
-                  <Search className="h-4 w-4 mr-2" />
-                  Handwerker finden
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/app/requests/new">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Auftrag einstellen
-                </Link>
-              </Button>
-            </div>
-          </div>
-        ) : (
-          // Tabs with orders
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="space-y-6">
-            <TabsList className="flex w-full overflow-x-auto lg:inline-flex lg:w-auto">
-              {tabConfig.map((tab) => {
-                const count =
-                  tab.value === "all" ? mockOrders.length : mockOrders.filter((o) => o.status === tab.value).length
-                return (
-                  <TabsTrigger key={tab.value} value={tab.value} className="gap-2 whitespace-nowrap">
-                    {tab.label}
-                    {count > 0 && <span className="text-xs bg-muted px-1.5 py-0.5 rounded-full">{count}</span>}
-                  </TabsTrigger>
-                )
-              })}
-            </TabsList>
-
-            {tabConfig.map((tab) => {
-              const orders = tab.value === "all" ? mockOrders : mockOrders.filter((o) => o.status === tab.value)
-
-              return (
-                <TabsContent key={tab.value} value={tab.value} className="mt-6">
-                  {orders.length === 0 ? (
-                    // Tab-specific empty state
-                    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                      <div className="rounded-full bg-muted p-5 mb-4">
-                        <ShoppingBag className="h-10 w-10 text-muted-foreground" />
-                      </div>
-                      <h3 className="text-lg font-semibold mb-2">Keine {tab.label.toLowerCase()}en Bestellungen</h3>
-                      <p className="text-muted-foreground mb-6 max-w-sm">
-                        {tab.value === "requested"
-                          ? "Angefragte Bestellungen erscheinen hier, sobald du eine Anfrage sendest."
-                          : tab.value === "payment_pending"
-                            ? "Bestellungen mit offener Zahlung werden hier angezeigt."
-                            : tab.value === "scheduled"
-                              ? "Geplante Termine erscheinen hier nach der Bestätigung."
-                              : tab.value === "in_progress"
-                                ? "Laufende Arbeiten werden hier angezeigt."
-                                : "Abgeschlossene Bestellungen werden hier archiviert."}
-                      </p>
-                      <div className="flex flex-col sm:flex-row items-center gap-3">
-                        <Button asChild className="bg-secondary hover:bg-secondary/90">
-                          <Link href="/app/suche">
-                            <Search className="h-4 w-4 mr-2" />
-                            Handwerker finden
-                          </Link>
-                        </Button>
-                        <Button asChild variant="outline">
-                          <Link href="/app/requests/new">
-                            <FileText className="h-4 w-4 mr-2" />
-                            Auftrag einstellen
-                          </Link>
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {orders.map((order) => (
-                        <OrderCard key={order.id} order={order} />
-                      ))}
-                    </div>
-                  )}
-                </TabsContent>
-              )
-            })}
-          </Tabs>
-        )}
-      </div>
-    </AppShell>
-  )
+  return <OrdersClient orders={orders} />
 }

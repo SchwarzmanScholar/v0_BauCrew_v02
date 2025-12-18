@@ -1,227 +1,250 @@
-"use client"
+import { Suspense } from "react";
+import { notFound } from "next/navigation";
+import { format } from "date-fns";
+import { de } from "date-fns/locale";
+import { MapPin, Calendar, Euro, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { AppShell } from "@/components/baucrew/app-shell";
+import { getJobRequestForProvider } from "@/app/_actions/job-requests";
+import { JobDetailMessagesCard } from "@/components/provider/job-detail-messages-card";
+import { JobDetailOfferCard } from "@/components/provider/job-detail-offer-card";
+import { ListingCategoryLabels, JobTimeframeLabels } from "@/lib/validations/job-request";
+import { requireDbUser } from "@/lib/auth";
 
-import { useState, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
-import Link from "next/link"
-import { AppShell } from "@/components/baucrew/app-shell"
-import { StatusBadge } from "@/components/baucrew/status-badge"
-import { WorkRequestDetailsCard } from "@/components/provider/work-request-details-card"
-import { LimitedCustomerCard } from "@/components/provider/limited-customer-card"
-import { SendOfferPanel } from "@/components/provider/send-offer-panel"
-import { WorkRequestMessagePanel } from "@/components/provider/work-request-message-panel"
-import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent } from "@/components/ui/card"
-import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, MessageSquare, Send, AlertTriangle, Flag, Info } from "lucide-react"
-import { mockProviderWorkRequestDetails, mockProviderWorkRequestMessages } from "@/lib/mock-data"
-import type { Message, ProviderWorkRequestDetail } from "@/lib/types"
+interface PageProps {
+  params: Promise<{
+    id: string;
+  }>;
+}
 
-export default function ProviderWorkRequestDetailPage() {
-  const params = useParams()
-  const router = useRouter()
-  const { toast } = useToast()
-  const requestId = params.id as string
+export default async function ProviderJobRequestDetailPage({ params }: PageProps) {
+  const { id } = await params;
+  const user = await requireDbUser();
 
-  // Get mock data based on ID
-  const request: ProviderWorkRequestDetail | undefined =
-    mockProviderWorkRequestDetails[requestId] || mockProviderWorkRequestDetails["work-request-1"]
-
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isSendingOffer, setIsSendingOffer] = useState(false)
-  const [offerSent, setOfferSent] = useState(!!request?.myOffer)
-
-  // Load messages
-  useEffect(() => {
-    const storedMessages = mockProviderWorkRequestMessages[requestId] || []
-    setMessages(storedMessages)
-  }, [requestId])
-
-  if (!request) {
-    return (
-      <AppShell userRole="provider" userName="Klaus Müller">
-        <div className="container mx-auto px-4 py-6">
-          <p>Auftrag nicht gefunden.</p>
-        </div>
-      </AppShell>
-    )
+  let data;
+  try {
+    data = await getJobRequestForProvider(id);
+  } catch (error) {
+    notFound();
   }
 
-  const isClosed = request.status === "closed"
+  const { jobRequest, thread, myOffers } = data;
 
-  const handleSendMessage = (content: string) => {
-    const newMsg: Message = {
-      id: `msg-new-${Date.now()}`,
-      senderId: "provider-current",
-      senderName: "Klaus Müller",
-      senderAvatar: "/placeholder.svg?height=40&width=40",
-      content,
-      timestamp: new Date(),
-      isCurrentUser: true,
+  const categoryLabel = ListingCategoryLabels[jobRequest.category] || jobRequest.category;
+  const timeframeLabel = JobTimeframeLabels[jobRequest.timeframe] || jobRequest.timeframe;
+
+  // Get status badge color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "OPEN":
+        return "bg-green-100 text-green-800 border-green-200";
+      case "IN_DISCUSSION":
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case "ASSIGNED":
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      case "CLOSED":
+        return "bg-gray-100 text-gray-800 border-gray-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
-    setMessages((prev) => [...prev, newMsg])
-  }
+  };
 
-  const handleSendOffer = (offer: { amount: number; message: string; availableDate?: Date }) => {
-    setIsSendingOffer(true)
-    // Simulate API call
-    setTimeout(() => {
-      setIsSendingOffer(false)
-      setOfferSent(true)
-      toast({
-        title: "Angebot gesendet",
-        description: "Der Kunde wurde über dein Angebot informiert.",
-      })
-      // Also send initial message if not already sent
-      if (messages.length === 0) {
-        handleSendMessage(offer.message)
-      }
-    }, 1500)
-  }
-
-  const scrollToMessages = () => {
-    const messageSection = document.getElementById("message-section")
-    if (messageSection) {
-      messageSection.scrollIntoView({ behavior: "smooth" })
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "OPEN":
+        return "Offen";
+      case "IN_DISCUSSION":
+        return "In Diskussion";
+      case "ASSIGNED":
+        return "Vergeben";
+      case "CLOSED":
+        return "Geschlossen";
+      case "FLAGGED":
+        return "Markiert";
+      default:
+        return status;
     }
-  }
+  };
+
+  // Format messages for the component
+  const messages = thread?.messages.map((msg) => ({
+    id: msg.id,
+    body: msg.body,
+    createdAt: msg.createdAt,
+    sender: msg.sender,
+  })) || [];
 
   return (
-    <AppShell userRole="provider" userName="Klaus Müller">
-      <div className="container mx-auto px-4 py-6">
+    <AppShell>
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
         {/* Back button */}
-        <div className="mb-4">
-          <Button variant="ghost" size="sm" asChild>
+        <div className="mb-6">
+          <Button variant="ghost" asChild>
             <Link href="/provider/job-board">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Zurück zum Job-Board
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Zurück zur Auftragsliste
             </Link>
           </Button>
         </div>
 
-        {/* Closed banner */}
-        {isClosed && (
-          <Alert className="mb-6 border-muted bg-muted/30">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>Dieser Auftrag wurde geschlossen. Du kannst keine Angebote mehr senden.</AlertDescription>
-          </Alert>
-        )}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main content - Left side */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Job Request Details */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4 mb-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge variant="outline" className="font-medium">
+                      {categoryLabel}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={getStatusColor(jobRequest.status)}
+                    >
+                      {getStatusLabel(jobRequest.status)}
+                    </Badge>
+                  </div>
+                  {jobRequest.totalOffers > 0 && (
+                    <Badge variant="secondary">
+                      {jobRequest.totalOffers}{" "}
+                      {jobRequest.totalOffers === 1 ? "Angebot" : "Angebote"}
+                    </Badge>
+                  )}
+                </div>
+                <CardTitle className="text-2xl">{jobRequest.title}</CardTitle>
+                <CardDescription>
+                  Erstellt am{" "}
+                  {format(new Date(jobRequest.createdAt), "dd. MMMM yyyy", {
+                    locale: de,
+                  })}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Description */}
+                <div>
+                  <h3 className="font-semibold mb-2">Beschreibung</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {jobRequest.description}
+                  </p>
+                </div>
 
-        {/* Header with title, status, and quick actions */}
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold text-balance">{request.title}</h1>
-              <StatusBadge status={request.status} />
-            </div>
-            {!isClosed && (
-              <div className="flex gap-2">
-                <Button onClick={scrollToMessages} variant="default">
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Nachricht senden
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const offerSection = document.getElementById("offer-section")
-                    if (offerSection) {
-                      offerSection.scrollIntoView({ behavior: "smooth" })
-                    }
-                  }}
-                  disabled={offerSent}
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  {offerSent ? "Angebot gesendet" : "Angebot senden"}
-                </Button>
-              </div>
-            )}
-          </div>
+                <Separator />
 
-          {/* Responses count */}
-          <p className="text-sm text-muted-foreground">{request.offerCount} Angebote erhalten</p>
-        </div>
-
-        {/* Two column layout */}
-        <div className="grid lg:grid-cols-[1fr_380px] gap-6">
-          {/* Left column - Request details */}
-          <div className="space-y-6">
-            <WorkRequestDetailsCard request={request} />
-
-            {/* Hints section */}
-            <Card className="border-primary/20 bg-primary/5">
-              <CardContent className="p-4">
-                <div className="flex gap-3">
-                  <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <div className="space-y-2">
-                    <h4 className="font-medium text-sm">Hinweise</h4>
-                    <ul className="text-sm text-muted-foreground space-y-1">
-                      <li>• Stelle Rückfragen im Chat.</li>
-                      <li>• Keine Zahlungen außerhalb der Plattform.</li>
-                      <li>• Antworte schnell für höhere Zuschlagschancen.</li>
-                    </ul>
+                {/* Location */}
+                <div className="flex items-start gap-2">
+                  <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold mb-1">Standort</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {jobRequest.city}, {jobRequest.postalCode}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Die vollständige Adresse wird nach Auftragsannahme angezeigt
+                    </p>
                   </div>
                 </div>
+
+                <Separator />
+
+                {/* Timing */}
+                <div className="flex items-start gap-2">
+                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold mb-1">Zeitrahmen</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {timeframeLabel}
+                    </p>
+                    {jobRequest.desiredDate && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Gewünschter Termin:{" "}
+                        {format(new Date(jobRequest.desiredDate), "dd. MMMM yyyy", {
+                          locale: de,
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Budget */}
+                {(jobRequest.budgetMinCents || jobRequest.budgetMaxCents) && (
+                  <>
+                    <Separator />
+                    <div className="flex items-start gap-2">
+                      <Euro className="h-5 w-5 text-muted-foreground mt-0.5" />
+                      <div>
+                        <h3 className="font-semibold mb-1">Budget</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {jobRequest.budgetMinCents &&
+                            `${(jobRequest.budgetMinCents / 100).toFixed(2)} EUR`}
+                          {jobRequest.budgetMinCents &&
+                            jobRequest.budgetMaxCents &&
+                            " - "}
+                          {jobRequest.budgetMaxCents &&
+                            `${(jobRequest.budgetMaxCents / 100).toFixed(2)} EUR`}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Photos */}
+                {jobRequest.photoUrls && jobRequest.photoUrls.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold mb-3">Fotos</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {jobRequest.photoUrls.map((url, index) => (
+                          <div
+                            key={index}
+                            className="aspect-square rounded-lg overflow-hidden bg-muted"
+                          >
+                            <img
+                              src={url}
+                              alt={`Auftragsfoto ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
-            {/* Message panel on mobile/tablet */}
-            <div id="message-section" className="lg:hidden">
-              <WorkRequestMessagePanel
-                messages={messages}
-                onSendMessage={handleSendMessage}
-                customerName={request.customer.firstName}
-              />
-            </div>
+            {/* Messages Card */}
+            <JobDetailMessagesCard
+              jobRequestId={jobRequest.id}
+              threadId={thread?.id}
+              messages={messages}
+              currentUserId={user.id}
+            />
           </div>
 
-          {/* Right column - Customer info, Messages, Offer panel */}
-          <div className="space-y-6">
-            {/* Customer info card */}
-            <LimitedCustomerCard customer={request.customer} />
-
-            {/* Message panel - desktop */}
-            <div className="hidden lg:block">
-              <WorkRequestMessagePanel
-                messages={messages}
-                onSendMessage={handleSendMessage}
-                customerName={request.customer.firstName}
+          {/* Right sidebar */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-6">
+              <JobDetailOfferCard
+                jobRequestId={jobRequest.id}
+                existingOffers={myOffers}
+                jobStatus={jobRequest.status}
               />
-            </div>
-
-            {/* Offer panel */}
-            {!isClosed && (
-              <div id="offer-section">
-                <SendOfferPanel
-                  request={
-                    offerSent
-                      ? {
-                          ...request,
-                          myOffer: request.myOffer || {
-                            id: "temp-offer",
-                            amount: 0,
-                            message: "",
-                            sentAt: new Date(),
-                            status: "pending" as const,
-                          },
-                        }
-                      : request
-                  }
-                  onSendOffer={handleSendOffer}
-                  isLoading={isSendingOffer}
-                />
-              </div>
-            )}
-
-            {/* Report link */}
-            <div className="text-center">
-              <Button variant="link" size="sm" className="text-muted-foreground">
-                <Flag className="h-3 w-3 mr-1" />
-                Problem melden
-              </Button>
             </div>
           </div>
         </div>
       </div>
     </AppShell>
-  )
+  );
 }

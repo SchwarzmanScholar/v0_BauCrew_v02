@@ -58,7 +58,9 @@ export function ProviderJobDetailsCard({ job, showFullAddress }: ProviderJobDeta
             <p className="text-sm text-muted-foreground pl-6">
               {job.address.plz} {job.address.city}
               <br />
-              <span className="text-xs italic">Vollständige Adresse nach Annahme sichtbar</span>
+              <span className="text-xs italic text-amber-600">
+                Adresse wird nach Zahlungsbestätigung freigegeben.
+              </span>
             </p>
           )}
         </div>

@@ -76,13 +76,13 @@ export function OrderCard({ order }: OrderCardProps) {
           {/* Actions */}
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm" className="flex-1 bg-transparent">
-              <Link href={`/app/orders/${order.id}`}>
+              <Link href={`/app/bookings/${order.id}`}>
                 <Eye className="h-4 w-4 mr-1.5" />
                 Anzeigen
               </Link>
             </Button>
             <Button asChild variant="ghost" size="sm" className="flex-1">
-              <Link href={`/app/messages/${order.providerId}`}>
+              <Link href={`/app/inbox`}>
                 <MessageSquare className="h-4 w-4 mr-1.5" />
                 Nachricht
               </Link>
