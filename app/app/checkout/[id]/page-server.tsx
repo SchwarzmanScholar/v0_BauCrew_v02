@@ -180,11 +180,11 @@ export default async function CheckoutPage({ params }: PageProps) {
               <div>
                 <div className="text-sm text-muted-foreground mb-1">Status</div>
                 <Badge
-                  variant={booking.status === "PAID" ? "default" : "secondary"}
+                  variant={(booking.status as string) === "PAID" ? "default" : "secondary"}
                   className="font-medium"
                 >
                   {booking.status === "NEEDS_PAYMENT" && "Zahlung ausstehend"}
-                  {booking.status === "PAID" && "Bezahlt"}
+                  {(booking.status as string) === "PAID" && "Bezahlt"}
                   {booking.status === "REQUESTED" && "Angefragt"}
                 </Badge>
               </div>

@@ -58,7 +58,7 @@ export default async function CheckoutPage({ params }: PageProps) {
   }
 
   // If already paid, redirect to booking detail
-  if (booking.status === "PAID" || booking.payment?.status === "SUCCEEDED") {
+  if ((booking.status as string) === "PAID" || (booking.payment?.status as string) === "SUCCEEDED") {
     redirect(`/app/bookings/${bookingId}`);
   }
 
@@ -179,11 +179,11 @@ export default async function CheckoutPage({ params }: PageProps) {
               <div>
                 <div className="text-sm text-muted-foreground mb-1">Status</div>
                 <Badge
-                  variant={booking.status === "PAID" ? "default" : "secondary"}
+                  variant={(booking.status as string) === "PAID" ? "default" : "secondary"}
                   className="font-medium"
                 >
                   {booking.status === "NEEDS_PAYMENT" && "Zahlung ausstehend"}
-                  {booking.status === "PAID" && "Bezahlt"}
+                  {(booking.status as string) === "PAID" && "Bezahlt"}
                   {booking.status === "REQUESTED" && "Angefragt"}
                 </Badge>
               </div>
@@ -196,7 +196,7 @@ export default async function CheckoutPage({ params }: PageProps) {
                   <Badge variant="outline">
                     {booking.payment.status === "REQUIRES_PAYMENT" &&
                       "Zahlung erforderlich"}
-                    {booking.payment.status === "SUCCEEDED" && "Erfolgreich"}
+                    {(booking.payment.status as string) === "SUCCEEDED" && "Erfolgreich"}
                     {booking.payment.status === "PROCESSING" && "In Bearbeitung"}
                   </Badge>
                 </div>

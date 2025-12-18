@@ -8,7 +8,7 @@ export default async function InboxPage() {
   const threads = await listMyThreads()
 
   // Transform threads to Conversation format
-  const conversations: Conversation[] = threads.map((thread) => {
+  const conversations: (Conversation & { link: string})[] = threads.map((thread) => {
     const isUserCustomer = thread.customerId === user.id
     const counterparty = isUserCustomer ? thread.provider : thread.customer
     const counterpartyName = isUserCustomer
